@@ -48,8 +48,13 @@ public without sharing class JiraWebhookProcessor implements IWebhookProcessor {
             //     return false;
             // }
             // return true;
-            
-            return false; // Replace with your implementation
+            String requestBody = request.requestBody.toString();
+            Map<String, Object> payload = (Map<String, Object>) JSON.deserializeUntyped(requestBody);
+            if(payload == null || !payload.containsKey('webhookEvent')) {
+                return false;
+            }
+
+            return true;
         } catch (Exception e) {
             // Log the error and return false
             System.debug(LoggingLevel.ERROR, 'Error validating webhook: ' + e.getMessage());
@@ -86,7 +91,24 @@ public without sharing class JiraWebhookProcessor implements IWebhookProcessor {
             // } else if (webhookEvent == EVENT_ISSUE_UPDATED) {
             //     processIssueUpdated(payload);
             // } // ... and so on for other event types
-            
+            String requestBody = request.requestBody.toString();
+            Map<String, Object> payload = (Map<String, Object>) JSON.deserializeUntyped(requestBody);
+
+            String webhookEvent = (String) payload.get('webhookEvent');
+
+            if(webhookEvent == EVENT_ISSUE_CREATED) {
+                processIssueCreated(payload);
+            } else if(webhookEvent == EVENT_ISSUE_UPDATED) {
+                processIssueUpdated(payload);
+            } else if(webhookEvent == EVENT_ISSUE_DELETED) {
+                processIssueDeleted(payload);
+            } else if(webhookEvent == EVENT_PROJECT_CREATED) {
+                processProjectCreated(payload);
+            } else if(webhookEvent == EVENT_PROJECT_UPDATED) {
+                processProjectUpdated(payload);
+            } else if(webhookEvent == EVENT_PROJECT_DELETED) {
+                processProjectDeleted(payload);
+            }
         } catch (Exception e) {
             System.debug(LoggingLevel.ERROR, 'Error processing webhook: ' + e.getMessage());
             throw e; // Re-throw to let the caller handle it
@@ -132,6 +154,23 @@ public without sharing class JiraWebhookProcessor implements IWebhookProcessor {
      */
     private void processIssueUpdated(Map<String, Object> payload) {
         // TODO: Implement issue update logic
+        try {
+            Map<String, Object> issueData = (Map<String, Object>) payload.get('issue');
+            String issueKey = (String) issueData.get('key');
+            Jira_Issue__c existingIssue = null;
+            List<Jira_Issue__c> issues = [
+                SELECT Id FROM Jira_Issue__c WHERE Issue_Key__c = :issueKey LIMIT 1
+            ];
+            if (!issues.isEmpty()) {
+                existingIssue = issues[0];
+            }
+            Jira_Issue__c updateIssue = updateIssueRecord(existingIssue, issueData);
+            upsert updateIssue;
+            System.debug('Updated Jira issue record: ' + updateIssue.Id);
+        } catch (Exception e) {
+            System.debug(LoggingLevel.ERROR, 'Error processing issue_updated event: ' + e.getMessage());
+            throw e;
+        }
     }
     
     /**
@@ -143,6 +182,22 @@ public without sharing class JiraWebhookProcessor implements IWebhookProcessor {
      */
     private void processIssueDeleted(Map<String, Object> payload) {
         // TODO: Implement issue deletion logic
+        try {
+            Map<String, Object> issueData = (Map<String, Object>) payload.get('issue');
+            String issueKey = (String) issueData.get('key');
+            List<Jira_Issue__c> issues = [
+                SELECT Id FROM Jira_Issue__c WHERE Issue_Key__c = :issueKey LIMIT 1
+            ];
+            if (!issues.isEmpty()) {
+                delete issues[0];
+                System.debug('Deleted Jira issue record: ' + issues[0].Id);
+            } else {
+                System.debug('No Jira issue record found to delete for key: ' + issueKey);
+            }
+        } catch (Exception e) {
+            System.debug(LoggingLevel.ERROR, 'Error processing issue_deleted event: ' + e.getMessage());
+            throw e;
+        }
     }
     
     /**
@@ -154,6 +209,17 @@ public without sharing class JiraWebhookProcessor implements IWebhookProcessor {
      */
     private void processProjectCreated(Map<String, Object> payload) {
         // TODO: Implement project creation logic
+        try {
+            Map<String, Object> projectData = (Map<String, Object>) payload.get('project');
+
+            Jira_Project__c newProject = createProjectRecord(projectData);
+
+            insert newProject;
+            System.debug('Created Jira project record: ' + newProject.Id);
+        } catch (Exception e) {
+            System.debug(LoggingLevel.ERROR, 'Error processing project_created event: ' + e.getMessage());
+            throw e;
+        }
     }
     
     /**
@@ -166,6 +232,25 @@ public without sharing class JiraWebhookProcessor implements IWebhookProcessor {
      */
     private void processProjectUpdated(Map<String, Object> payload) {
         // TODO: Implement project update logic
+        try {
+            Map<String, Object> projectData = (Map<String, Object>) payload.get('project');
+            String projectKey = (String) projectData.get('key');
+            Jira_Project__c existingProject = null;
+            List<Jira_Project__c> projects = [
+                SELECT Id
+                FROM Jira_Project__c WHERE Project_Key__c = :projectKey LIMIT 1
+            ];
+            if (!projects.isEmpty()) {
+                existingProject = projects[0];
+            }
+            Jira_Project__c updateProject = updateProjectRecord(existingProject, projectData);
+            upsert updateProject;
+
+            System.debug('Updated Jira project record: ' + updateProject.Id);
+        } catch (Exception e) {
+            System.debug(LoggingLevel.ERROR, 'Error processing project_updated event: ' + e.getMessage());
+            throw e;
+        }
     }
     
     /**
@@ -177,6 +262,21 @@ public without sharing class JiraWebhookProcessor implements IWebhookProcessor {
      */
     private void processProjectDeleted(Map<String, Object> payload) {
         // TODO: Implement project deletion logic
+        try {
+            Map<String, Object> projectData = (Map<String, Object>) payload.get('project');
+            String projectKey = (String) projectData.get('key');
+            List<Jira_Project__c> projects = [
+                SELECT Id 
+                FROM Jira_Project__c
+                WHERE Project_Key__c = :projectKey LIMIT 1
+            ];
+
+            delete projects[0];
+            System.debug('Deleted Jira project record: ' + projects[0].Id);
+        } catch (Exception e) {
+            System.debug(LoggingLevel.ERROR, 'Error processing project_deleted event: ' + e.getMessage());
+            throw e;
+        }
     }
     
     /**
@@ -205,8 +305,53 @@ public without sharing class JiraWebhookProcessor implements IWebhookProcessor {
         // );
         // 
         // return issue;
-        
-        return new Jira_Issue__c();
+        String issueKey = (String) issueData.get('key');
+        Map<String, Object> fields = (Map<String, Object>) issueData.get('fields');
+        String summary = (String) fields.get('summary');
+        String description = (String) fields.get('description');
+        String issueType = '';
+        if (fields.containsKey('issuetype')) {
+            Object issueTypeObj = fields.get('issuetype');
+            if (issueTypeObj instanceof Map<String, Object>) {
+                issueType = (String) ((Map<String, Object>) issueTypeObj).get('name');
+            } else {
+                issueType = (String) issueTypeObj;
+            }
+        }
+        String status = '';
+        if (fields.containsKey('status')) {
+            Object statusObj = fields.get('status');
+            if (statusObj instanceof Map<String, Object>) {
+                status = (String) ((Map<String, Object>) statusObj).get('name');
+            } else {
+                status = (String) statusObj;
+            }
+        }
+        String projectKey = '';
+        if (fields.containsKey('project')) {
+            Object projectObj = fields.get('project');
+            if (projectObj instanceof Map<String, Object>) {
+                projectKey = (String) ((Map<String, Object>) projectObj).get('key');
+            } else {
+                projectKey = (String) projectObj;
+            }
+        }
+        String lastUpdatedStr = (String) fields.get('updated');
+        Datetime lastUpdated = null;
+        if (lastUpdatedStr != null) {
+            lastUpdated = Datetime.valueOfGmt(lastUpdatedStr.replace('T', ' ').replace('Z', ''));
+        }
+
+        Jira_Issue__c issue = new Jira_Issue__c(
+            Issue_Key__c = issueKey,
+            Summary__c = summary,
+            Description__c = description,
+            Issue_Type__c = issueType,
+            Status__c = status,
+            Project_Key__c = projectKey,
+            Last_Updated__c = lastUpdated
+        );
+        return issue;
     }
     
     /**
@@ -219,8 +364,56 @@ public without sharing class JiraWebhookProcessor implements IWebhookProcessor {
      * Implement logic to extract issue fields and update a record
      */
     private Jira_Issue__c updateIssueRecord(Jira_Issue__c existingIssue, Map<String, Object> issueData) {
-        // TODO: Implement issue record update logic
-        return existingIssue;
+        String issueKey = (String) issueData.get('key');
+        Map<String, Object> fields = (Map<String, Object>) issueData.get('fields');
+        String summary = (String) fields.get('summary');
+        String description = (String) fields.get('description');
+        String issueType = '';
+        if (fields.containsKey('issuetype')) {
+            Object issueTypeObj = fields.get('issuetype');
+            if (issueTypeObj instanceof Map<String, Object>) {
+                issueType = (String) ((Map<String, Object>) issueTypeObj).get('name');
+            } else {
+                issueType = (String) issueTypeObj;
+            }
+        }
+        String status = '';
+        if (fields.containsKey('status')) {
+            Object statusObj = fields.get('status');
+            if (statusObj instanceof Map<String, Object>) {
+                status = (String) ((Map<String, Object>) statusObj).get('name');
+            } else {
+                status = (String) statusObj;
+            }
+        }
+        String projectKey = '';
+        if (fields.containsKey('project')) {
+            Object projectObj = fields.get('project');
+            if (projectObj instanceof Map<String, Object>) {
+                projectKey = (String) ((Map<String, Object>) projectObj).get('key');
+            } else {
+                projectKey = (String) projectObj;
+            }
+        }
+        String lastUpdatedStr = (String) fields.get('updated');
+        Datetime lastUpdated = null;
+        if (lastUpdatedStr != null) {
+            lastUpdated = Datetime.valueOfGmt(lastUpdatedStr.replace('T', ' ').replace('Z', ''));
+        }
+
+        Jira_Issue__c issue;
+        if (existingIssue == null) {
+            issue = new Jira_Issue__c(Issue_Key__c = issueKey);
+        } else {
+            issue = existingIssue;
+        }
+        issue.Summary__c = summary;
+        issue.Description__c = description;
+        issue.Issue_Type__c = issueType;
+        issue.Status__c = status;
+        issue.Project_Key__c = projectKey;
+        issue.Last_Updated__c = lastUpdated;
+        return issue;
     }
     
     /**
@@ -233,7 +426,24 @@ public without sharing class JiraWebhookProcessor implements IWebhookProcessor {
      */
     private Jira_Project__c createProjectRecord(Map<String, Object> projectData) {
         // TODO: Implement project record creation logic
-        return new Jira_Project__c();
+        String projectKey = (String) projectData.get('key');
+        String projectName = (String) projectData.get('name');
+        String projectId = (String) projectData.get('id');
+        String description = (String) projectData.get('description');
+        String createdDateStr = (String) projectData.get('created');
+        Datetime createdDate = null;
+        if (createdDateStr != null) {
+            createdDate = Datetime.valueOfGmt(createdDateStr.replace('T', ' ').replace('Z', ''));
+        }
+
+        Jira_Project__c project = new Jira_Project__c(
+            Project_Key__c = projectKey,
+            Project_Name__c = projectName,
+            Project_ID__c = projectId,
+            Description__c = description,
+            Created_Date__c = createdDate
+        );
+        return project;
     }
     
     /**
@@ -242,11 +452,17 @@ public without sharing class JiraWebhookProcessor implements IWebhookProcessor {
      * @param projectData The updated project data from the webhook
      * @return Jira_Project__c The updated project record
      * 
-     * STUDENT TASK:
+     * STUDENT TASK HERE:
      * Implement logic to extract project fields and update a record
      */
     private Jira_Project__c updateProjectRecord(Jira_Project__c existingProject, Map<String, Object> projectData) {
         // TODO: Implement project record update logic
+        String projectKey = (String) projectData.get('key');
+        Map<String, Object> fields = (Map<String, Object>) projectData.get('fields');
+        String description = (String) fields.get('description');
+
+        existingProject.Description__c = description;
+        // here
         return existingProject;
     }
 } 

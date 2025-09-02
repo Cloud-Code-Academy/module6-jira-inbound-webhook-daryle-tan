@@ -21,13 +21,24 @@ global without sharing class WebhookResource {
      * 1. Get the REST request and response objects
      * 2. Extract the webhook type from the URL path using getWebhookTypeFromPath
      * 3. Process the webhook using WebhookFactory.processWebhook
-     * 4. Return an appropriate ResponseWrapper
+     * 4. Return an appropriate. ResponseWrapper
      * 5. Add error handling using try-catch
      */
     @HttpPost
     global static ResponseWrapper doPost() {
         // TODO: Implement webhook processing logic
-        return new ResponseWrapper('error', 'Method not implemented');
+        try {
+            RestRequest req = RestContext.request;
+            String webhookType = getWebhookTypeFromPath(req.requestURI);
+            if (String.isBlank(webhookType)) {
+                return new ResponseWrapper('error', 'Invalid webhook type in URL');
+            }
+            WebhookFactory.processWebhook(webhookType, req);
+            return new ResponseWrapper('success', 'Webhook processed successfully');
+        } catch (Exception e) {
+            System.debug(LoggingLevel.ERROR, 'Error processing webhook: ' + e.getMessage());
+            return new ResponseWrapper('error', 'Webhook processing failed: ' + e.getMessage());
+        }
     }
     
     /**
