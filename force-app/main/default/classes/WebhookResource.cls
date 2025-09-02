@@ -27,7 +27,18 @@ global without sharing class WebhookResource {
     @HttpPost
     global static ResponseWrapper doPost() {
         // TODO: Implement webhook processing logic
-        return new ResponseWrapper('error', 'Method not implemented');
+        try {
+            RestRequest req = RestContext.request;
+            String webhookType = getWebhookTypeFromPath(req.requestURI);
+            if (String.isBlank(webhookType)) {
+                return new ResponseWrapper('error', 'Invalid webhook type in URL');
+            }
+            WebhookFactory.processWebhook(webhookType, req);
+            return new ResponseWrapper('success', 'Webhook processed successfully');
+        } catch (Exception e) {
+            System.debug(LoggingLevel.ERROR, 'Error processing webhook: ' + e.getMessage());
+            return new ResponseWrapper('error', 'Webhook processing failed: ' + e.getMessage());
+        }
     }
     
     /**
