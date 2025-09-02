@@ -452,7 +452,7 @@ public without sharing class JiraWebhookProcessor implements IWebhookProcessor {
      * @param projectData The updated project data from the webhook
      * @return Jira_Project__c The updated project record
      * 
-     * STUDENT TASK:
+     * STUDENT TASK HERE:
      * Implement logic to extract project fields and update a record
      */
     private Jira_Project__c updateProjectRecord(Jira_Project__c existingProject, Map<String, Object> projectData) {
