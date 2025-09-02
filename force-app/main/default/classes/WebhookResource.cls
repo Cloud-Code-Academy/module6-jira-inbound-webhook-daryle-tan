@@ -21,7 +21,7 @@ global without sharing class WebhookResource {
      * 1. Get the REST request and response objects
      * 2. Extract the webhook type from the URL path using getWebhookTypeFromPath
      * 3. Process the webhook using WebhookFactory.processWebhook
-     * 4. Return an appropriate ResponseWrapper
+     * 4. Return an appropriate. ResponseWrapper
      * 5. Add error handling using try-catch
      */
     @HttpPost
